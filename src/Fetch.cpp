@@ -80,7 +80,7 @@ Response fetch(const char* url, RequestOptions options) {
 FetchClient fetch(const char* url, RequestOptions options, OnResponseCallback onResponseCallback) {
     // Parsing URL.
     Url parsedUrl = parseUrl(url);
-    
+    ConnectionStatus cs = IDLE;
     WiFiClientSecure client;
     // Retry every 15 seconds.
     client.setTimeout(15000);
@@ -104,63 +104,87 @@ FetchClient fetch(const char* url, RequestOptions options, OnResponseCallback on
     }
 
     // Connecting to server.
-    while(!client.connect(parsedUrl.host.c_str(), parsedUrl.port)) {
-        delay(1000);
-        Serial.print(".");
+    if (client.connect(parsedUrl.host.c_str(), parsedUrl.port)) {
+        cs = CONNECTED
+            // Forming request.
+            String request =
+            options.method + " " + parsedUrl.path + parsedUrl.afterPath + " HTTP/1.1\r\n" +
+            "Host: " + parsedUrl.host + "\r\n" +
+            options.headers.text() +
+            options.body + "\r\n\r\n";
+
+        DEBUG_FETCH("-----REQUEST START-----\n%s\n-----REQUEST END-----", request.c_str());
+
+        // Sending request.
+        client.print(request);
+    }
+    else {
+        cs = CONNECTING;
     }
 
-    // Forming request.
-    String request =
-        options.method + " " + parsedUrl.path + parsedUrl.afterPath + " HTTP/1.1\r\n" +
-        "Host: " + parsedUrl.host + "\r\n" +
-        options.headers.text() +
-        options.body + "\r\n\r\n";
-
-    DEBUG_FETCH("-----REQUEST START-----\n%s\n-----REQUEST END-----", request.c_str());
-
-    // Sending request.
-    client.print(request);
-
-    return FetchClient(client, onResponseCallback);
+    
+    return FetchClient(client, onResponseCallback, cs);
 }
 
 FetchClient::FetchClient() {}
 
-FetchClient::FetchClient(WiFiClientSecure& client, OnResponseCallback onResponseCallback) : _client(client), _OnResponseCallback(onResponseCallback) {}
+FetchClient::FetchClient(WiFiClientSecure& client, OnResponseCallback onResponseCallback) : _client(client), _OnResponseCallback(onResponseCallback), _connectionStatus(IDLE), _connectRetries(0) {}
 
 void FetchClient::loop() {
-    if(_client.available()) {
-        DEBUG_FETCH("[Info] Receiving response.");
-        // Getting response headers.
-        Response response;
+    if (_clientStatus == CONNECTING) {
+        Serial.printf("Connection retry: %d\n", _connectRetries++);
+        if (client.connect(parsedUrl.host.c_str(), parsedUrl.port)) {
+            _clientStatus = CONNECTED
+                // Forming request.
+                String request =
+                options.method + " " + parsedUrl.path + parsedUrl.afterPath + " HTTP/1.1\r\n" +
+                "Host: " + parsedUrl.host + "\r\n" +
+                options.headers.text() +
+                options.body + "\r\n\r\n";
 
-        for(int nLine = 1; _client.connected(); nLine++) {
-            // Reading headers line by line.
-            String line = _client.readStringUntil('\n');
-            // Parse status and statusText from line 1.
-            if(nLine == 1) {
-                response.status = line.substring(line.indexOf(" ")).substring(0, line.indexOf(" ")).toInt();
-                response.statusText = line.substring(line.indexOf(String(response.status)) + 4);
-                response.statusText.trim();
-                continue;
+            DEBUG_FETCH("-----REQUEST START-----\n%s\n-----REQUEST END-----", request.c_str());
+
+            // Sending request.
+            client.print(request);
+        }
+        else {
+            _clientStatus = CONNECTING;
+        }
+    }
+    else if (_clientStatus == CONNECTED) {
+        if (_client.available()) {
+            DEBUG_FETCH("[Info] Receiving response.");
+            // Getting response headers.
+            Response response;
+
+            for (int nLine = 1; _client.connected(); nLine++) {
+                // Reading headers line by line.
+                String line = _client.readStringUntil('\n');
+                // Parse status and statusText from line 1.
+                if (nLine == 1) {
+                    response.status = line.substring(line.indexOf(" ")).substring(0, line.indexOf(" ")).toInt();
+                    response.statusText = line.substring(line.indexOf(String(response.status)) + 4);
+                    response.statusText.trim();
+                    continue;
+                }
+
+                response.headers += line + "\n";
+                // If headers end, move on.
+                if (line == "\r") break;
             }
 
-            response.headers += line + "\n";
-            // If headers end, move on.
-            if(line == "\r") break;
+            DEBUG_FETCH("-----HEADERS START-----\n%s\n-----HEADERS END-----", response.headers.text().c_str());
+
+            // Getting response body.
+            while (_client.available()) {
+                response.body += _client.readStringUntil('\n');
+            }
+
+            // Stopping the client.
+            _client.stop();
+
+            _OnResponseCallback(response);
         }
-
-        DEBUG_FETCH("-----HEADERS START-----\n%s\n-----HEADERS END-----", response.headers.text().c_str());
-
-        // Getting response body.
-        while(_client.available()) {
-            response.body += _client.readStringUntil('\n');
-        }
-
-        // Stopping the client.
-        _client.stop();
-
-        _OnResponseCallback(response);
     }
 }
 
