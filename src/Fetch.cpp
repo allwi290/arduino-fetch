@@ -128,7 +128,7 @@ FetchClient fetch(const char* url, RequestOptions options, OnResponseCallback on
 
 FetchClient::FetchClient() {}
 
-FetchClient::FetchClient(WiFiClientSecure& client, OnResponseCallback onResponseCallback) : _client(client), _OnResponseCallback(onResponseCallback), _connectionStatus(IDLE), _connectRetries(0) {}
+FetchClient::FetchClient(WiFiClientSecure& client, OnResponseCallback onResponseCallback, ConnectionStatus connectionStatus) : _client(client), _OnResponseCallback(onResponseCallback), _connectionStatus(IDLE), _connectRetries(0) {}
 
 void FetchClient::loop() {
 	if (_clientStatus == CONNECTING) {

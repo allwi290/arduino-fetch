@@ -34,3 +34,10 @@
 *.exe
 *.out
 *.app
+/.vs
+/examples/esp8266/async/get/Debug
+/examples/esp8266/async/get/Release
+/examples/esp8266/async/get/__vm
+/examples/esp8266/async/get/get.vcxproj.user
+/examples/esp8266/async/get/get.vcxproj.filters
+/examples/esp8266/async/get/get.vcxproj
