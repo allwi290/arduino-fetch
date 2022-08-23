@@ -7,9 +7,7 @@ Response fetch(const char* url, RequestOptions options) {
 	Url parsedUrl = parseUrl(url);
 
 	WiFiClientSecure client;
-	// Retry every 15 seconds.
-	client.setTimeout(15000);
-
+	
 	// Set fingerprint if https.
 	if (parsedUrl.scheme == "https") {
 #ifdef ESP8266
@@ -140,7 +138,9 @@ void FetchClient::loop() {
 				"Host: " + _url.host + "\r\n" +
 				_requestOptions.headers.text() +
 				_requestOptions.body + "\r\n\r\n";
+
 			DEBUG_FETCH("-----REQUEST START-----\n%s\n-----REQUEST END-----", request.c_str());
+
 			// Sending request.
 			_client.print(request);
 		}
@@ -157,6 +157,7 @@ void FetchClient::loop() {
 			for (int nLine = 1; _client.connected(); nLine++) {
 				// Reading headers line by line.
 				String line = _client.readStringUntil('\n');
+				DEBUG_FETCH(line);
 				// Parse status and statusText from line 1.
 				if (nLine == 1) {
 					response.status = line.substring(line.indexOf(" ")).substring(0, line.indexOf(" ")).toInt();
