@@ -92,9 +92,11 @@ class FetchClient {
         ConnectionStatus _connectionStatus;
         WiFiClientSecure _client;
         OnResponseCallback _OnResponseCallback;
+        Url _url;
+        RequestOptions _requestOptions;
     public:
         FetchClient();
-        FetchClient(WiFiClientSecure& client, OnResponseCallback callback, ConnectionStatus connectionStatus);
+        FetchClient(WiFiClientSecure& client, OnResponseCallback callback, ConnectionStatus connectionStatus, Url url, RequestOptions options);
         void loop();
 };
 

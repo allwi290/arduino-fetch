@@ -80,7 +80,6 @@ Response fetch(const char* url, RequestOptions options) {
 FetchClient fetch(const char* url, RequestOptions options, OnResponseCallback onResponseCallback) {
 	// Parsing URL.
 	Url parsedUrl = parseUrl(url);
-	ConnectionStatus cs = IDLE;
 	WiFiClientSecure client;
 	// Retry every 15 seconds.
 	client.setTimeout(15000);
@@ -105,7 +104,6 @@ FetchClient fetch(const char* url, RequestOptions options, OnResponseCallback on
 
 	// Connecting to server.
 	if (client.connect(parsedUrl.host.c_str(), parsedUrl.port)) {
-		cs = CONNECTED;
 		// Forming request.
 		String request =
 			options.method + " " + parsedUrl.path + parsedUrl.afterPath + " HTTP/1.1\r\n" +
@@ -117,41 +115,40 @@ FetchClient fetch(const char* url, RequestOptions options, OnResponseCallback on
 
 		// Sending request.
 		client.print(request);
+		return FetchClient(client, onResponseCallback, CONNECTED, parsedUrl, options);
 	}
 	else {
-		cs = CONNECTING;
+		return FetchClient(client, onResponseCallback, CONNECTING, parsedUrl, options);
 	}
 
 
-	return FetchClient(client, onResponseCallback, cs);
+	
 }
 
 FetchClient::FetchClient() {}
 
-FetchClient::FetchClient(WiFiClientSecure& client, OnResponseCallback onResponseCallback, ConnectionStatus connectionStatus) : _client(client), _OnResponseCallback(onResponseCallback), _connectionStatus(IDLE), _connectRetries(0) {}
+FetchClient::FetchClient(WiFiClientSecure& client, OnResponseCallback onResponseCallback, ConnectionStatus connectionStatus, Url url, RequestOptions options) : _client(client), _OnResponseCallback(onResponseCallback), _connectionStatus(connectionStatus), _connectRetries(0), _url(url), _requestOptions(options) {}
 
 void FetchClient::loop() {
-	if (_clientStatus == CONNECTING) {
-		Serial.printf("Connection retry: %d\n", _connectRetries++);
-		if (client.connect(parsedUrl.host.c_str(), parsedUrl.port)) {
-			_clientStatus = CONNECTED
-				// Forming request.
-				String request =
-				options.method + " " + parsedUrl.path + parsedUrl.afterPath + " HTTP/1.1\r\n" +
-				"Host: " + parsedUrl.host + "\r\n" +
-				options.headers.text() +
-				options.body + "\r\n\r\n";
-
+	if (_connectionStatus == CONNECTING) {
+		DEBUG_FETCH("Connection retry: %d\n", _connectRetries++);
+		if (_client.connect(_url.host.c_str(), _url.port)) {
+			_connectionStatus = CONNECTED;
+			// Forming request.
+			String request =
+				_requestOptions.method + " " + _url.path + _url.afterPath + " HTTP/1.1\r\n" +
+				"Host: " + _url.host + "\r\n" +
+				_requestOptions.headers.text() +
+				_requestOptions.body + "\r\n\r\n";
 			DEBUG_FETCH("-----REQUEST START-----\n%s\n-----REQUEST END-----", request.c_str());
-
 			// Sending request.
-			client.print(request);
+			_client.print(request);
 		}
 		else {
-			_clientStatus = CONNECTING;
+			_connectionStatus = CONNECTING;
 		}
 	}
-	else if (_clientStatus == CONNECTED) {
+	else if (_connectionStatus == CONNECTED) {
 		if (_client.available()) {
 			DEBUG_FETCH("[Info] Receiving response.");
 			// Getting response headers.
@@ -182,7 +179,7 @@ void FetchClient::loop() {
 
 			// Stopping the client.
 			_client.stop();
-
+			_connectionStatus = IDLE;
 			_OnResponseCallback(response);
 		}
 	}
