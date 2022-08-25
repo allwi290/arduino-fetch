@@ -79,9 +79,7 @@ FetchClient fetch(const char* url, RequestOptions options, OnResponseCallback on
 	// Parsing URL.
 	Url parsedUrl = parseUrl(url);
 	WiFiClientSecure client;
-	// Retry every 15 seconds.
 	client.setTimeout(15000);
-
 	// Set fingerprint if https.
 	if (parsedUrl.scheme == "https") {
 #ifdef ESP8266
@@ -116,6 +114,7 @@ FetchClient fetch(const char* url, RequestOptions options, OnResponseCallback on
 		return FetchClient(client, onResponseCallback, CONNECTED, parsedUrl, options);
 	}
 	else {
+		DEBUG_FETCH("Connection failed.");
 		return FetchClient(client, onResponseCallback, CONNECTING, parsedUrl, options);
 	}
 
@@ -129,7 +128,7 @@ FetchClient::FetchClient(WiFiClientSecure& client, OnResponseCallback onResponse
 
 void FetchClient::loop() {
 	if (_connectionStatus == CONNECTING) {
-		DEBUG_FETCH("Connection retry: %d\n", _connectRetries++);
+		Serial.printf("Connection retry: %d\n", _connectRetries++);
 		if (_client.connect(_url.host.c_str(), _url.port)) {
 			_connectionStatus = CONNECTED;
 			// Forming request.
@@ -145,21 +144,22 @@ void FetchClient::loop() {
 			_client.print(request);
 		}
 		else {
+			DEBUG_FETCH("Connection failed.");
 			_connectionStatus = CONNECTING;
 		}
 	}
 	else if (_connectionStatus == CONNECTED) {
-		if (_client.available()) {
+		Response response;
+		if (_client.connected()) {
 			DEBUG_FETCH("[Info] Receiving response.");
 			// Getting response headers.
-			Response response;
 
-			for (int nLine = 1; _client.connected(); nLine++) {
+			for (int nLine = 1; _client.available(); nLine++) {
 				// Reading headers line by line.
 				String line = _client.readStringUntil('\n');
-				DEBUG_FETCH(line);
 				// Parse status and statusText from line 1.
 				if (nLine == 1) {
+					DEBUG_FETCH(line);
 					response.status = line.substring(line.indexOf(" ")).substring(0, line.indexOf(" ")).toInt();
 					response.statusText = line.substring(line.indexOf(String(response.status)) + 4);
 					response.statusText.trim();
@@ -178,11 +178,15 @@ void FetchClient::loop() {
 				response.body += _client.readStringUntil('\n');
 			}
 
-			// Stopping the client.
-			_client.stop();
-			_connectionStatus = IDLE;
-			_OnResponseCallback(response);
+			
 		}
+		else {
+			DEBUG_FETCH("Not connected");
+		}
+		// Stopping the client.
+		_client.stop();
+		_connectionStatus = IDLE;
+		_OnResponseCallback(response);
 	}
 }
 
@@ -223,7 +227,7 @@ String operator+(String str, Body body) {
 	return str + body.text();
 }
 
-Response::Response() : ok(false), status(200), statusText("OK"),
+Response::Response() : ok(false), status(418), statusText("I'm a teapot"),
 redirected(false), type(""), headers({}), body("") {}
 
 String Response::text() {
